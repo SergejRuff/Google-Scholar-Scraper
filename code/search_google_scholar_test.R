@@ -1,9 +1,18 @@
 rm(list=ls())
 
+library(rvest)
+library(httr)
+library(magrittr)
+library(stringr)
+library(Randomuseragent)
+library(RSelenium)
+
 ## This version of the function doesnt require the user to sepcify number of pages he wants to scrape.
 ## it scrapes all pages.
 ## might take longer, might cause http 429 error
 ## proxies taken from: https://scrapingant.com/free-proxies/
+# this function goes through only the first 10 pages
+# after taking a break count_elements returns 0 links causing empty lists
 
 proxies <- c(
   "72.10.160.90:2695",
@@ -109,13 +118,20 @@ retry_request <- function(url, proxies) {
   return(NULL)
 }
 
+# Function to count the number of elements with a specific class on the current page
+count_elements <- function(page) {
+  # Select elements with the specified class on the page
+  elements <- rvest::html_text(rvest::html_elements(page, ".gs_rt"))
+  # Count the number of selected elements
+  num_elements <- length(elements)
+  return(num_elements)
+}
+
+
 scrape_gs <- function(term,proxies,...) {
-  library(rvest)
-  library(httr)
-  library(magrittr)
-  library(stringr)
-  library(Randomuseragent)
-  library(RSelenium)
+
+
+
 
 
 
@@ -133,6 +149,13 @@ scrape_gs <- function(term,proxies,...) {
   # Read the HTML content of the Google Scholar search results page
   page <- read_html(gs_page,user_agent=Randomuseragent::random_useragent())
 
+  # Count the number of links on the page
+  num_links <- count_elements(page)
+  message(num_links)
+  if (num_links == 0) {
+    return(NULL)
+  }
+
   # Extract the entire page content as text
   page_text <- as.character(page)
   #print(page_text)
@@ -144,7 +167,14 @@ scrape_gs <- function(term,proxies,...) {
     as.integer()
 
   # Find the maximum number
-  max_number <- max(numbers, na.rm = TRUE)
+  # Check if the count of elements is less than 10
+  if (num_links < 10) {
+    message("search-term has only 1 page")
+    max_number <- 1
+  } else {
+    max_number <- max(numbers, na.rm = TRUE)
+  }
+
   if (is.infinite(max_number)) {
     cat("Max number is -Inf. Trying with a new proxy.\n")
     rotate_proxy()  # Rotate to a new proxy
@@ -224,18 +254,30 @@ scrape_gs <- function(term,proxies,...) {
   return(result_df)
 }
 
-#test <- scrape_gs("mmu-miR-196b-5p",proxies)
-#print(test)
+
+
 
 testcsv <- read.csv("/home/sergej/Desktop/coding/viper/data/intercept/intersection_3.csv")
 
-search_results <- list()
 
-for (i in 1:length(testcsv$MiRNA)) {
 
-  search_results[[i]] <-scrape_gs(testcsv$MiRNA[i],proxies)
+
+for (i in 24:length(testcsv$MiRNA)) {
+  mirna_name <- testcsv$MiRNA[[i]]
+  test <- scrape_gs(mirna_name, proxies)
+
+  # Check if test is NULL, which indicates that no links were found
+  if (is.null(test)) {
+    cat("No links found for:", mirna_name, "\n")
+    next  # Skip to the next iteration
+  }
+
+  output_file <- paste0("/home/sergej/Desktop/coding/scholar_scraper/output/", mirna_name, ".csv")
+  write.csv(test, output_file, row.names = FALSE)
+  cat("Scraped and saved:", mirna_name, "\n")
 }
-#[1:2,]
+
+
 
 
 
