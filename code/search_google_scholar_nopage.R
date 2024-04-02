@@ -1,23 +1,51 @@
 rm(list=ls())
 
+library(rvest)
+library(httr)
+library(magrittr)
+library(stringr)
+library(Randomuseragent)
+library(RSelenium)
+source("code/proxies.R")
+source("code/rotate_proxies.R")
+source("code/retry_request.R")
+source("code/count_elements.R")
+
 ## This version of the function doesnt require the user to sepcify number of pages he wants to scrape.
 ## it scrapes all pages.
 ## might take longer, might cause http 429 error
+## proxies taken from: https://scrapingant.com/free-proxies/
+# this function goes through only the first 10 pages
+# after taking a break count_elements returns 0 links causing empty lists
 
-scrape_gs <- function(term,...) {
-  library(rvest)
-  library(httr)
-  library(magrittr)
-  library(stringr)
+
+scrape_gs <- function(term,proxies,...) {
+
+
+
+
 
 
   gs_url_base <- "https://scholar.google.com/scholar?q="
+  term <- gsub("^mmu-", "", term)
+  #term <- paste0("Virus AND intitle:",term)
+  print(paste0("intitle:",term))
 
-  gs_page <- paste0(gs_url_base, URLencode(term))
-  cat(paste("current link ->",gs_page),"\n")
+  best_proxy <- retry_request(paste0(gs_url_base, URLencode(paste0("intitle:",term))), proxies)
+  gs_page <- rvest::session(paste0(gs_url_base, URLencode(paste0("intitle:",term))), httr::use_proxy(url = best_proxy[[1]], port = best_proxy[[2]]))
+  #gs_page <- rvest::session(paste0(gs_url_base, URLencode(term)), httr::use_proxy(url = proxy_ip, port = proxy_port))
+
+  cat(paste("current link ->",paste0(gs_url_base, URLencode(paste0("intitle:",term)))),"\n")
 
   # Read the HTML content of the Google Scholar search results page
-  page <- read_html(gs_page)
+  page <- read_html(gs_page,user_agent=Randomuseragent::random_useragent())
+
+  # Count the number of links on the page
+  num_links <- count_elements(page)
+  message(num_links)
+  if (num_links == 0) {
+    return(NULL)
+  }
 
   # Extract the entire page content as text
   page_text <- as.character(page)
@@ -30,8 +58,20 @@ scrape_gs <- function(term,...) {
     as.integer()
 
   # Find the maximum number
-  max_number <- max(numbers, na.rm = TRUE)
-  cat(paste0(term," has ",max_number, " pages with results\n"))
+  # Check if the count of elements is less than 10
+  if (num_links < 10) {
+    message("search-term has only 1 page")
+    max_number <- 1
+  } else {
+    max_number <- max(numbers, na.rm = TRUE)
+  }
+
+  if (is.infinite(max_number)) {
+    cat("Max number is -Inf. Trying with a new proxy.\n")
+    rotate_proxy()  # Rotate to a new proxy
+    return(scrape_gs(term, proxies))  # Retry scraping with a new proxy
+  }
+  cat(paste0(paste0("intitle:",term)," has ",max_number, " pages with results\n"))
 
 
   # set httr config outside of function and use them inside ...; e.g.:
@@ -42,15 +82,19 @@ scrape_gs <- function(term,...) {
   i <- 1
 
   for (n_page in 0:(max_number- 1)*10) {  # gs page indexing starts with 0; there are 10 articles per page, see "?start=" param
-    gs_url <- paste0(gs_url_base, "?start=", n_page, "&q=", noquote(gsub("\\s+", "+", trimws(term))))
+    gs_url <- paste0(gs_url_base, "&start=", n_page, "&q=", noquote(gsub("\\s+", "+", trimws(paste0("intitle:",term)))))
+    cat(paste(gs_url,"-> page:",n_page/10 + 1),"\n")
+
     t0 <- Sys.time()
-    session <- rvest::session(gs_url, ...)  # session$config$options$useragent
-    cat(paste0("current http status is ",session$response$status_code))
+    session <- rvest::session(gs_url, httr::use_proxy(url = best_proxy[[1]], port = best_proxy[[2]]))
+    #cat(paste0("current http status is ",session$response$status_code))
     t1 <- Sys.time()
     response_delay <- as.numeric(t1-t0)  # backing off time
-    wbpage <- rvest::read_html(session)
+    wbpage <- rvest::read_html(session,user_agent=Randomuseragent::random_useragent())
 
-    crawl_delay <- sample(1:3, 1)
+    #crawl_delay <- sample(2:10, 1)
+    crawl_delay <- 3
+
 
     # Avoid HTTP error 429 due to too many requests - use crawl delay & back off
     Sys.sleep(crawl_delay + 3*response_delay + runif(n = 1, min = 0.5, max = 1))
@@ -62,7 +106,7 @@ scrape_gs <- function(term,...) {
 
     # Raw data
     titles <- rvest::html_text(rvest::html_elements(wbpage, ".gs_rt"))
-    print(titles)
+    #print(titles)
     authors_years <- rvest::html_text(rvest::html_elements(wbpage, ".gs_a"))
     part_abstracts <- rvest::html_text(rvest::html_elements(wbpage, ".gs_rs"))
     bottom_row_nodes <- rvest::html_elements(wbpage, ".gs_fl")
@@ -101,6 +145,30 @@ scrape_gs <- function(term,...) {
   return(result_df)
 }
 
-test <- scrape_gs("mmu-miR-196b-5p")
-#print(test)
+
+
+
+testcsv <- read.csv("/home/sergej/Desktop/coding/viper/data/intercept/intersection_3.csv")
+
+
+
+
+for (i in 24:length(testcsv$MiRNA)) {
+  mirna_name <- testcsv$MiRNA[[i]]
+  test <- scrape_gs(mirna_name, proxies)
+
+  # Check if test is NULL, which indicates that no links were found
+  if (is.null(test)) {
+    cat("No links found for:", mirna_name, "\n")
+    next  # Skip to the next iteration
+  }
+
+  output_file <- paste0("/home/sergej/Desktop/coding/scholar_scraper/output/", mirna_name, ".csv")
+  write.csv(test, output_file, row.names = FALSE)
+  cat("Scraped and saved:", mirna_name, "\n")
+}
+
+
+
+
 
