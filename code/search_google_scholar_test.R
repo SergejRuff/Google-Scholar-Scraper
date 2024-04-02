@@ -4,17 +4,81 @@ rm(list=ls())
 ## it scrapes all pages.
 ## might take longer, might cause http 429 error
 
-scrape_gs <- function(term,...) {
+proxies <- c(
+  "72.10.160.90:2695",
+  "138.219.249.5:3128",
+  "158.181.204.159:8080",
+  "44.226.167.102:80",
+  "162.19.7.57:41115",
+  "67.213.210.61:26367",
+  "67.213.212.58:51494",
+  "67.213.210.61:26367",
+  "67.213.212.58:51494",
+  "195.154.43.86:41207",
+  "67.43.228.253:12319",
+  "138.201.21.227:41601",
+  "67.43.228.253:22975",
+  "67.43.228.253:21607",
+  "114.132.202.246:8080",
+  "67.43.236.20:24489",
+  "54.213.136.83:52167",
+  "67.43.236.20:5051",
+  "67.43.236.20:5051",
+  "67.43.228.253:26107",
+  "67.43.227.227:28963",
+  "67.43.228.251:2305",
+  "72.10.164.178:20313",
+  "67.43.228.253:28539",
+  "72.10.164.178:8093",
+  "88.250.88.246:5314",
+  "72.10.164.178:7371",
+  "103.139.25.121:8080"
+)
+
+# Function to rotate proxies
+rotate_proxy <- function() {
+  current_proxy <<- sample(proxies, 1)
+}
+
+
+retry_request <- function(url, proxies) {
+  max_proxies <- length(proxies)
+  shuffled_proxies <- sample(proxies)
+
+  for (proxy_index in 1:max_proxies) {
+    current_proxy <- shuffled_proxies[proxy_index]
+
+    # Split current_proxy into IP address and port
+    proxy_parts <- unlist(strsplit(current_proxy, ":"))
+    proxy_ip <- proxy_parts[1]
+    proxy_port <- as.numeric(proxy_parts[2])
+
+    tryCatch({
+      session <- rvest::session(url, httr::use_proxy(url = proxy_ip, port = proxy_port))
+      # If the connection is successful, return the URL and port of the proxy
+      return(list(url = proxy_ip, port = proxy_port))
+    }, error = function(e) {
+      cat("Error occurred with proxy", current_proxy, ":", conditionMessage(e), "\n")
+    })
+  }
+  cat("All proxies failed. Failed to establish connection.\n")
+  return(NULL)
+}
+
+scrape_gs <- function(term,proxies,...) {
   library(rvest)
   library(httr)
   library(magrittr)
   library(stringr)
 
 
-  gs_url_base <- "https://scholar.google.com/scholar?q="
 
-  gs_page <- paste0(gs_url_base, URLencode(term))
-  cat(paste("current link ->",gs_page),"\n")
+  gs_url_base <- "https://scholar.google.com/scholar?q="
+  best_proxy <- retry_request(paste0(gs_url_base, URLencode(term)), proxies)
+  gs_page <- rvest::session(paste0(gs_url_base, URLencode(term)), httr::use_proxy(url = best_proxy[[1]], port = best_proxy[[2]]))
+  #gs_page <- rvest::session(paste0(gs_url_base, URLencode(term)), httr::use_proxy(url = proxy_ip, port = proxy_port))
+
+  cat(paste("current link ->",paste0(gs_url_base, URLencode(term))),"\n")
 
   # Read the HTML content of the Google Scholar search results page
   page <- read_html(gs_page)
@@ -42,15 +106,18 @@ scrape_gs <- function(term,...) {
   i <- 1
 
   for (n_page in 0:(max_number- 1)*10) {  # gs page indexing starts with 0; there are 10 articles per page, see "?start=" param
-    gs_url <- paste0(gs_url_base, "?start=", n_page, "&q=", noquote(gsub("\\s+", "+", trimws(term))))
+    gs_url <- paste0(gs_url_base, "&start=", n_page, "&q=", noquote(gsub("\\s+", "+", trimws(term))))
+    cat(paste(gs_url,"-> page:",n_page/10 + 1),"\n")
+
     t0 <- Sys.time()
-    session <- rvest::session(gs_url, ...)  # session$config$options$useragent
-    cat(paste0("current http status is ",session$response$status_code))
+    session <- rvest::session(gs_url, httr::use_proxy(url = best_proxy[[1]], port = best_proxy[[2]]))
+    #cat(paste0("current http status is ",session$response$status_code))
     t1 <- Sys.time()
     response_delay <- as.numeric(t1-t0)  # backing off time
     wbpage <- rvest::read_html(session)
 
-    crawl_delay <- sample(1:3, 1)
+    crawl_delay <- sample(2:10, 1)
+
 
     # Avoid HTTP error 429 due to too many requests - use crawl delay & back off
     Sys.sleep(crawl_delay + 3*response_delay + runif(n = 1, min = 0.5, max = 1))
@@ -62,7 +129,7 @@ scrape_gs <- function(term,...) {
 
     # Raw data
     titles <- rvest::html_text(rvest::html_elements(wbpage, ".gs_rt"))
-    print(titles)
+    #print(titles)
     authors_years <- rvest::html_text(rvest::html_elements(wbpage, ".gs_a"))
     part_abstracts <- rvest::html_text(rvest::html_elements(wbpage, ".gs_rs"))
     bottom_row_nodes <- rvest::html_elements(wbpage, ".gs_fl")
@@ -101,6 +168,6 @@ scrape_gs <- function(term,...) {
   return(result_df)
 }
 
-test <- scrape_gs("mmu-miR-196b-5p")
+test <- scrape_gs("mmu-miR-196b-5p",proxies)
 #print(test)
 

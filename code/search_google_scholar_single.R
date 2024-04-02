@@ -7,6 +7,8 @@ search_query <- "mmu-miR-196b-5p"
 search_url <- paste0("https://scholar.google.com/scholar?q=", URLencode(search_query))
 search_page <- read_html(search_url)
 
+
+
 titles <- search_page %>%
   html_nodes(".gs_rt") %>%
   html_text()
