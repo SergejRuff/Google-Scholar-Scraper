@@ -77,10 +77,10 @@ scrape_gs <- function(term, proxies, ...) {
 
     # Count the number of links on the page
     num_links <- count_elements(page)
-    #message(num_links)
-    #if (num_links == 0) {
-    #  return(NULL)
-    #}
+    message(num_links)
+    if (num_links == 0) {
+      return(NULL)
+    }
 
     # Extract the entire page content as text
     page_text <- as.character(page)
@@ -209,9 +209,9 @@ testcsv <- read.csv("/home/sergej/Desktop/coding/viper/data/intercept/intersecti
 
 
 
-for (i in 1:length(testcsv$MiRNA)) {
+for (i in 11:length(testcsv$MiRNA)) {
   mirna_name <- testcsv$MiRNA[[i]]
-  mirna_name <- gsub("-[^-]*$", "", mirna_name)
+  mirna_name <- gsub("-\\dp$", "", mirna_name)
 
 
   tryCatch({
