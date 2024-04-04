@@ -209,7 +209,7 @@ testcsv <- read.csv("/home/sergej/Desktop/coding/viper/data/intercept/intersecti
 
 
 
-for (i in 11:length(testcsv$MiRNA)) {
+for (i in 22:length(testcsv$MiRNA)) {
   mirna_name <- testcsv$MiRNA[[i]]
   mirna_name <- gsub("-\\dp$", "", mirna_name)
 
