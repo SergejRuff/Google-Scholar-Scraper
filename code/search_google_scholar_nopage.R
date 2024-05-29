@@ -106,12 +106,16 @@ scrape_gs <- function(term, proxies, ...) {
 
     if (file.exists("data_backup.rds")) {
 
+      message("backup file will be used and results will be appended to it")
+
       result_list <- saved_data
 
 
 
 
     }else{
+
+      message("A new resluts_list will be used")
 
       result_list <- list()
     }
@@ -204,14 +208,14 @@ scrape_gs <- function(term, proxies, ...) {
 
 
 
-testcsv <- read.csv("/home/sergej/Desktop/coding/viper/data/intercept/intersection_3.csv")
+testcsv <- read.csv("data/intersection_3.csv")
 
 
 
 
-for (i in 22:length(testcsv$MiRNA)) {
+for (i in 1:length(testcsv$MiRNA)) {
   mirna_name <- testcsv$MiRNA[[i]]
-  mirna_name <- gsub("-\\dp$", "", mirna_name)
+  #mirna_name <- gsub("-\\dp$", "", mirna_name)
 
 
   tryCatch({
@@ -230,7 +234,7 @@ for (i in 22:length(testcsv$MiRNA)) {
     next  # Skip to the next iteration
   }
 
-  output_file <- paste0("/home/sergej/Desktop/coding/scholar_scraper/output/", mirna_name, ".csv")
+  output_file <- paste0("output/", mirna_name, ".csv")
   write.csv(test, output_file, row.names = FALSE)
   cat("Scraped and saved:", mirna_name, "\n")
 }
